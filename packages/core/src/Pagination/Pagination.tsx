@@ -355,12 +355,12 @@ export function Pagination({
   const [, startTransition] = useTransition();
 
   // Resolve system strings once per render. Prop overrides win.
-  const translate = useTranslator();
-  const resolvedLabel = label ?? translate('@astryx.pagination.label');
-  const previousLabel = translate('@astryx.pagination.previous');
-  const nextLabel = translate('@astryx.pagination.next');
-  const pageIndicatorsLabel = translate('@astryx.pagination.pageIndicators');
-  const itemsPerPageLabel = translate('@astryx.pagination.itemsPerPage');
+  const t = useTranslator();
+  const resolvedLabel = label ?? t('@astryx.pagination.label');
+  const previousLabel = t('@astryx.pagination.previous');
+  const nextLabel = t('@astryx.pagination.next');
+  const pageIndicatorsLabel = t('@astryx.pagination.pageIndicators');
+  const itemsPerPageLabel = t('@astryx.pagination.itemsPerPage');
 
   // pageSize is typed as number, so 0, NaN, and negatives are valid at the
   // type level but yield Infinity/NaN page counts, and
@@ -426,11 +426,11 @@ export function Pagination({
     onChange(newPage);
     announce(
       computedTotalPages != null
-        ? translate('@astryx.pagination.pageOfTotalAnnounce', {
+        ? t('@astryx.pagination.pageOfTotal', {
             current: newPage,
             total: computedTotalPages,
           })
-        : translate('@astryx.pagination.pageAnnounce', {current: newPage}),
+        : t('@astryx.pagination.pageAnnounce', {current: newPage}),
     );
     startTransition(async () => {
       setOptimisticPage(newPage);
@@ -522,8 +522,8 @@ export function Pagination({
               return (
                 <Button
                   key={item}
-                  label={translate('@astryx.pagination.goToPage', {page: item})}
-                  aria-label={translate('@astryx.pagination.goToPage', {
+                  label={t('@astryx.pagination.goToPage', {page: item})}
+                  aria-label={t('@astryx.pagination.goToPage', {
                     page: item,
                   })}
                   variant="ghost"
@@ -547,7 +547,7 @@ export function Pagination({
         return (
           <span {...stylex.props(styles.infoText)}>
             <Text type="body" size="sm" color="secondary">
-              {translate('@astryx.pagination.count', {
+              {t('@astryx.pagination.count', {
                 from: rangeStart,
                 to: rangeEnd,
                 total: totalItems,
@@ -564,7 +564,7 @@ export function Pagination({
         return (
           <span {...stylex.props(styles.infoText)}>
             <Text type="body" size="sm" color="secondary">
-              {translate('@astryx.pagination.pageOfTotal', {
+              {t('@astryx.pagination.pageOfTotal', {
                 current: optimisticPage,
                 total: computedTotalPages,
               })}
@@ -593,7 +593,7 @@ export function Pagination({
                   key={i + 1}
                   type="button"
                   data-page={i + 1}
-                  aria-label={translate('@astryx.pagination.goToPage', {
+                  aria-label={t('@astryx.pagination.goToPage', {
                     page: i + 1,
                   })}
                   aria-current={isActive ? 'page' : undefined}
