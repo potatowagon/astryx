@@ -225,12 +225,14 @@ function ComponentDetailInner({
                   <Section>
                     <VStack gap={3}>
                       <Heading level={3}>Props</Heading>
-                      <PlaygroundPropsTable
-                        props={comp.props}
-                        knobs={knobs}
-                        state={state}
-                        onPropChange={setProp}
-                      />
+                      <Card>
+                        <PlaygroundPropsTable
+                          props={comp.props}
+                          knobs={knobs}
+                          state={state}
+                          onPropChange={setProp}
+                        />
+                      </Card>
                     </VStack>
                   </Section>
                 )}

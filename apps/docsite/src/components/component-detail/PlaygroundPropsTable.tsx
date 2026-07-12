@@ -507,7 +507,7 @@ function PropRow({
 
   return (
     <HStack gap={3} style={{paddingBlock: 6}}>
-      <div style={{flexBasis: 200, flexShrink: 0}}>
+      <div style={{flexBasis: 280, flexShrink: 0}}>
         <Text type="body" weight="bold">
           {prop.name}
         </Text>
