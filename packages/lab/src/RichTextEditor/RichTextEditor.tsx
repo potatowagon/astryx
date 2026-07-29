@@ -68,7 +68,11 @@ import {LinkPlugin} from '@lexical/react/LexicalLinkPlugin';
 import {TabIndentationPlugin} from '@lexical/react/LexicalTabIndentationPlugin';
 import {MarkdownShortcutPlugin} from '@lexical/react/LexicalMarkdownShortcutPlugin';
 import {OnChangePlugin} from '@lexical/react/LexicalOnChangePlugin';
-import {TRANSFORMERS, type Transformer} from '@lexical/markdown';
+import {
+  TRANSFORMERS,
+  $convertToMarkdownString,
+  type Transformer,
+} from '@lexical/markdown';
 export type {Transformer} from '@lexical/markdown';
 import {ListNode, ListItemNode} from '@lexical/list';
 import {HeadingNode, QuoteNode} from '@lexical/rich-text';
@@ -207,6 +211,13 @@ export interface RichTextEditorRef {
   clear: () => void;
   /** Read the current `EditorState`. Serialize with `.toJSON()` to persist. */
   getEditorState: () => EditorState;
+  /**
+   * Serialize the current content to a Markdown string, using the same
+   * `transformers` the editor is configured with (so custom transformers
+   * layered in via the `transformers` prop are honored). Equivalent to
+   * `$convertToMarkdownString` run in a read context.
+   */
+  getMarkdown: () => string;
   /**
    * Access the underlying `LexicalEditor` instance for advanced use cases
    * (custom commands, listeners, node transforms).
@@ -494,7 +505,11 @@ export const RichTextEditor = forwardRef<
               />
             )}
             {plugins}
-            <EditorRefBridge editorRef={ref} editable={editable} />
+            <EditorRefBridge
+              editorRef={ref}
+              editable={editable}
+              transformers={markdownTransformers}
+            />
           </div>
         </LexicalComposer>
       </div>
@@ -528,9 +543,11 @@ function AutoFocusOnMount(): null {
 function EditorRefBridge({
   editorRef,
   editable,
+  transformers,
 }: {
   editorRef: Ref<RichTextEditorRef>;
   editable: boolean;
+  transformers: Array<Transformer>;
 }): null {
   const [editor] = useLexicalComposerContext();
   useImperativeHandle(
@@ -553,9 +570,17 @@ function EditorRefBridge({
         editor.setEditorState(editor.parseEditorState(EMPTY_EDITOR_STATE_JSON));
       },
       getEditorState: () => editor.getEditorState(),
+      getMarkdown: () =>
+        // $convertToMarkdownString must run inside a read context. Honors the
+        // same transformers the editor uses for shortcuts, so custom
+        // transformers round-trip to Markdown. `@lexical/markdown` is a
+        // subpackage (built dist) — safe, unlike a top-level `lexical` import.
+        editor
+          .getEditorState()
+          .read(() => $convertToMarkdownString(transformers)),
       getEditor: () => editor,
     }),
-    [editor, editable],
+    [editor, editable, transformers],
   );
   return null;
 }
