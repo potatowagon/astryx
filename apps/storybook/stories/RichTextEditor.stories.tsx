@@ -8,6 +8,8 @@ import {
   markdownToEditorStateJSON,
   editorStateJSONToMarkdown,
   RichTextEditorToolbar,
+  RichTextEditorAutoLinkPlugin,
+  RichTextEditorLinkTargetPlugin,
   type RichTextEditorRef,
 } from '@astryxdesign/lab';
 import type {EditorState} from 'lexical';
@@ -52,6 +54,36 @@ export const WithToolbar: Story = {
   },
 };
 
+export const WithLinks: Story = {
+  args: {
+    label: 'Notes',
+    placeholder:
+      'Select text and press the Link button (or Cmd/Ctrl+K) to add a link…',
+    plugins: (
+      <>
+        <RichTextEditorToolbar />
+        {/* Force every link (including existing content) to open in a new tab. */}
+        <RichTextEditorLinkTargetPlugin />
+      </>
+    ),
+  },
+};
+
+export const WithAutoLink: Story = {
+  args: {
+    label: 'Notes',
+    placeholder: 'Type a URL like https://astryx.dev and it auto-links…',
+    plugins: (
+      <>
+        <RichTextEditorToolbar />
+        {/* Auto-linkify typed/pasted URLs + emails (open in a new tab). */}
+        <RichTextEditorAutoLinkPlugin />
+        <RichTextEditorLinkTargetPlugin />
+      </>
+    ),
+  },
+};
+
 export const WithDescription: Story = {
   args: {
     label: 'Release notes',
@@ -72,7 +104,8 @@ export const WithCharacterLimit: Story = {
   args: {
     label: 'Bio',
     maxLength: 80,
-    description: 'A character counter appears below the editor when maxLength is set.',
+    description:
+      'A character counter appears below the editor when maxLength is set.',
     placeholder: 'Type past 80 characters to see the counter turn red…',
   },
 };
@@ -190,7 +223,9 @@ export const ImperativeRef = {
             onClick={() => {
               const state = ref.current?.getEditorState();
               const text = state?.read(() => $getRoot().getTextContent());
-              setReadout(`getEditorState() text content: ${JSON.stringify(text)}`);
+              setReadout(
+                `getEditorState() text content: ${JSON.stringify(text)}`,
+              );
             }}>
             getEditorState()
           </button>

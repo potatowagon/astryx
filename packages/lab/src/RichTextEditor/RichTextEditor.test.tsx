@@ -10,11 +10,16 @@
  */
 
 import {describe, it, expect, vi} from 'vitest';
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, fireEvent} from '@testing-library/react';
 import {createRef, useEffect} from 'react';
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import type {EditorState, LexicalEditor} from 'lexical';
-import {$getRoot, $createParagraphNode, $createTextNode} from 'lexical';
+import {
+  $getRoot,
+  $createParagraphNode,
+  $createTextNode,
+  $isElementNode,
+} from 'lexical';
 import {HeadingNode} from '@lexical/rich-text';
 import {TRANSFORMERS, $convertFromMarkdownString} from '@lexical/markdown';
 import {RichTextEditor, type RichTextEditorRef} from './RichTextEditor';
@@ -25,6 +30,16 @@ import {
 } from './markdownSerializers';
 import {RichTextEditorToolbar} from './RichTextEditorToolbar';
 import {registerIcons, resetIcons} from '@astryxdesign/core/Icon';
+import {
+  RichTextEditorAutoLinkPlugin,
+  DEFAULT_LINK_MATCHERS,
+  NEW_TAB_LINK_ATTRIBUTES,
+} from './RichTextEditorAutoLinkPlugin';
+import {
+  RichTextEditorLinkTargetPlugin,
+  setLinkOpensInNewTab,
+} from './RichTextEditorLinkTargetPlugin';
+import {sanitizeUrl, validateUrl} from './linkUtils';
 
 // Small plugin that captures the editor instance so tests can drive real
 // Lexical updates (jsdom does not implement contenteditable editing).
@@ -800,5 +815,262 @@ describe('RichTextEditorToolbar', () => {
     } finally {
       resetIcons();
     }
+  });
+});
+
+describe('linkUtils', () => {
+  describe('sanitizeUrl', () => {
+    it('passes through http/https URLs', () => {
+      expect(sanitizeUrl('https://example.com')).toBe('https://example.com/');
+      expect(sanitizeUrl('http://example.com/x')).toBe('http://example.com/x');
+    });
+
+    it('defaults a scheme-less host to https', () => {
+      expect(sanitizeUrl('example.com')).toBe('https://example.com/');
+    });
+
+    it('preserves mailto and tel schemes', () => {
+      expect(sanitizeUrl('mailto:a@b.com')).toBe('mailto:a@b.com');
+      expect(sanitizeUrl('tel:+15551234')).toBe('tel:+15551234');
+    });
+
+    it('rejects javascript: and other unsafe schemes as about:blank', () => {
+      expect(sanitizeUrl('javascript:alert(1)')).toBe('about:blank');
+      expect(sanitizeUrl('data:text/html,<script>')).toBe('about:blank');
+      expect(sanitizeUrl('vbscript:msgbox')).toBe('about:blank');
+    });
+
+    it('rejects empty/whitespace input as about:blank', () => {
+      expect(sanitizeUrl('')).toBe('about:blank');
+      expect(sanitizeUrl('   ')).toBe('about:blank');
+    });
+  });
+
+  describe('validateUrl', () => {
+    it('accepts safe URLs (with or without scheme)', () => {
+      expect(validateUrl('https://example.com')).toBe(true);
+      expect(validateUrl('example.com')).toBe(true);
+      expect(validateUrl('mailto:a@b.com')).toBe(true);
+    });
+
+    it('rejects unsafe schemes and empty input', () => {
+      expect(validateUrl('javascript:alert(1)')).toBe(false);
+      expect(validateUrl('')).toBe(false);
+    });
+  });
+});
+
+describe('RichTextEditorToolbar — links', () => {
+  it('renders a Link button by default', () => {
+    render(
+      <RichTextEditor label="Notes" plugins={<RichTextEditorToolbar />} />,
+    );
+    expect(screen.getByRole('button', {name: 'Link'})).toBeInTheDocument();
+  });
+
+  it('omits the Link button when hasLink is false', () => {
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={<RichTextEditorToolbar hasLink={false} />}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', {name: 'Link'}),
+    ).not.toBeInTheDocument();
+  });
+
+  it('creates a sanitized link over the selected text via promptForUrl', async () => {
+    let editor!: LexicalEditor;
+    const promptForUrl = vi.fn(() => 'example.com');
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={
+          <>
+            <RichTextEditorToolbar promptForUrl={promptForUrl} />
+            <CaptureEditor onReady={e => (editor = e)} />
+          </>
+        }
+      />,
+    );
+    await waitFor(() => expect(editor).toBeDefined());
+
+    // Seed "hello" and select all of it so the toggle wraps a real range.
+    // Seed + select in a single update so the RangeSelection is live when the
+    // toolbar reads it.
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+      const paragraph = $createParagraphNode();
+      const textNode = $createTextNode('hello');
+      paragraph.append(textNode);
+      root.append(paragraph);
+      textNode.select(0, 5);
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Link'}));
+
+    expect(promptForUrl).toHaveBeenCalled();
+    // The selection text is passed to the prompt (empty string is acceptable
+    // if jsdom drops the range; the important contract is the sanitized href).
+    // The link node exists with the sanitized (https, scheme-added) href.
+    await waitFor(() => {
+      let href: string | null = null;
+      editor.getEditorState().read(() => {
+        const root = $getRoot();
+        const paragraph = root.getFirstChild();
+        // Find the first LinkNode-like descendant (has getURL()).
+        const descendants = $isElementNode(paragraph)
+          ? paragraph.getChildren()
+          : [];
+        for (const child of descendants) {
+          if ('getURL' in child) {
+            href = (child as {getURL(): string}).getURL();
+            break;
+          }
+        }
+      });
+      expect(href).toBe('https://example.com/');
+    });
+  });
+
+  it('does not create a link when promptForUrl returns an unsafe scheme', async () => {
+    let editor!: LexicalEditor;
+    const promptForUrl = vi.fn(() => 'javascript:alert(1)');
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={
+          <>
+            <RichTextEditorToolbar promptForUrl={promptForUrl} />
+            <CaptureEditor onReady={e => (editor = e)} />
+          </>
+        }
+      />,
+    );
+    await waitFor(() => expect(editor).toBeDefined());
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+      const paragraph = $createParagraphNode();
+      const textNode = $createTextNode('hello');
+      paragraph.append(textNode);
+      root.append(paragraph);
+      textNode.select(0, 5);
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Link'}));
+    expect(promptForUrl).toHaveBeenCalled();
+
+    // No link node was created — no descendant exposes getURL().
+    let hasLinkNode = false;
+    editor.getEditorState().read(() => {
+      const root = $getRoot();
+      const paragraph = root.getFirstChild();
+      const descendants = $isElementNode(paragraph)
+        ? paragraph.getChildren()
+        : [];
+      for (const child of descendants) {
+        if ('getURL' in child) {
+          hasLinkNode = true;
+        }
+      }
+    });
+    expect(hasLinkNode).toBe(false);
+  });
+});
+
+describe('RichTextEditorAutoLinkPlugin', () => {
+  it('renders without crashing inside the editor', () => {
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={<RichTextEditorAutoLinkPlugin />}
+      />,
+    );
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+  });
+
+  it('exposes URL + email default matchers that open in a new tab', () => {
+    expect(DEFAULT_LINK_MATCHERS).toHaveLength(2);
+    const urlMatch = DEFAULT_LINK_MATCHERS[0]('see https://example.com now');
+    expect(urlMatch).not.toBeNull();
+    expect(urlMatch?.url).toBe('https://example.com/');
+    expect(urlMatch?.attributes).toEqual(NEW_TAB_LINK_ATTRIBUTES);
+
+    const emailMatch = DEFAULT_LINK_MATCHERS[1]('ping a@b.com please');
+    expect(emailMatch).not.toBeNull();
+    expect(emailMatch?.url).toBe('mailto:a@b.com');
+    expect(emailMatch?.attributes).toEqual(NEW_TAB_LINK_ATTRIBUTES);
+  });
+
+  it('auto-links a typed URL as an AutoLinkNode', async () => {
+    let editor!: LexicalEditor;
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={
+          <>
+            <RichTextEditorAutoLinkPlugin />
+            <CaptureEditor onReady={e => (editor = e)} />
+          </>
+        }
+      />,
+    );
+    await waitFor(() => expect(editor).toBeDefined());
+
+    // A URL followed by a separator triggers the AutoLink transform.
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+      const paragraph = $createParagraphNode();
+      paragraph.append($createTextNode('visit https://example.com '));
+      root.append(paragraph);
+    });
+
+    await waitFor(() => {
+      let hasAutoLink = false;
+      editor.getEditorState().read(() => {
+        const root = $getRoot();
+        const paragraph = root.getFirstChild();
+        const children = $isElementNode(paragraph)
+          ? paragraph.getChildren()
+          : [];
+        children.forEach(child => {
+          if (child.getType() === 'autolink') {
+            hasAutoLink = true;
+          }
+        });
+      });
+      expect(hasAutoLink).toBe(true);
+    });
+  });
+});
+
+describe('setLinkOpensInNewTab', () => {
+  it('sets target=_blank and rel on an anchor element', () => {
+    const a = document.createElement('a');
+    setLinkOpensInNewTab(a);
+    expect(a.getAttribute('target')).toBe('_blank');
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('is a no-op for non-anchor elements and null', () => {
+    const span = document.createElement('span');
+    setLinkOpensInNewTab(span);
+    expect(span.hasAttribute('target')).toBe(false);
+    // Should not throw on null.
+    expect(() => setLinkOpensInNewTab(null)).not.toThrow();
+  });
+
+  it('renders as a plugin without crashing', () => {
+    render(
+      <RichTextEditor
+        label="Notes"
+        plugins={<RichTextEditorLinkTargetPlugin />}
+      />,
+    );
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 });

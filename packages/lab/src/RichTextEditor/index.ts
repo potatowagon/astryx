@@ -38,3 +38,22 @@ export {
   RICHTEXT_ICON_KEYS,
 } from './RichTextEditorToolbar';
 export type {RichTextEditorToolbarProps} from './RichTextEditorToolbar';
+
+export {
+  RichTextEditorAutoLinkPlugin,
+  DEFAULT_LINK_MATCHERS,
+  NEW_TAB_LINK_ATTRIBUTES,
+} from './RichTextEditorAutoLinkPlugin';
+export type {RichTextEditorAutoLinkPluginProps} from './RichTextEditorAutoLinkPlugin';
+
+export {
+  RichTextEditorLinkTargetPlugin,
+  setLinkOpensInNewTab,
+} from './RichTextEditorLinkTargetPlugin';
+
+export {
+  sanitizeUrl,
+  validateUrl,
+  URL_MATCHER,
+  EMAIL_MATCHER,
+} from './linkUtils';
